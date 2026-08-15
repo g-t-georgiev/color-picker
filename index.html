@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>VS Code Style Color Picker</title>
+  <style>
+    /* External styling example */
+    body {
+      background: #1e1e1e;
+      color: #ccc;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 50px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    /* You can override exposed CSS variables from the outside */
+    color-picker-button {
+      --picker-trigger-size: 36px;
+    }
+  </style>
+</head>
+
+<body>
+  <color-picker-button value="#007acc"></color-picker-button>
+
+  <script type="module" src="./src/index.js"></script>
+</body>
+
+</html>
