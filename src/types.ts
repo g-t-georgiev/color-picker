@@ -7,6 +7,15 @@ export enum ColorFormat {
   HSLA = "hsla"
 }
 
+export type SupportedColorFormat = ColorFormat.HEX | ColorFormat.RGB | ColorFormat.HSL;
+
 export type onMoveCallback = (x: number, y: number) => void;
 
-export type SupportedColorFormat = ColorFormat.HEX | ColorFormat.RGB | ColorFormat.HSL;
+export type ColorChangeEventShape = {
+  hex: string;
+  r: number;
+  g: number;
+  b: number;
+  alpha: number;
+  displayString: string;
+};

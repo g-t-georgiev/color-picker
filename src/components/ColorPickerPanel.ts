@@ -1,4 +1,9 @@
-import { ColorFormat, SupportedColorFormat, onMoveCallback } from "../types";
+import {
+  type ColorChangeEventShape,
+  ColorFormat,
+  type SupportedColorFormat,
+  type onMoveCallback
+} from "../types";
 import { ColorUtils, SUPPORTED_COLOR_FORMATS } from "../utils";
 
 const template = document.createElement("template");
@@ -448,7 +453,7 @@ export default class ColorPickerPanel extends HTMLElement {
     const [r, g, b] = ColorUtils.hsvToRgb(h, s, v);
     const hex = ColorUtils.rgbToHex(r, g, b, this.#alpha);
 
-    this.dispatchEvent(new CustomEvent("color-changed", {
+    this.dispatchEvent(new CustomEvent<ColorChangeEventShape>("color-changed", {
       bubbles: true,
       composed: true,
       detail: { hex, r, g, b, alpha: this.#alpha, displayString: this.#elemsMap.colorDisplay.textContent }
