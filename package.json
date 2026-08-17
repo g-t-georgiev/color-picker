@@ -1,21 +1,42 @@
 {
   "name": "color-picker",
   "version": "1.0.0",
-  "description": "",
-  "main": "./src/index.js",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "main": "./dist/color-picker.umd.js",
+  "module": "./dist/color-picker.es.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/color-picker.es.js",
+      "require": "./dist/color-picker.umd.js"
+    }
+  },
   "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "files": [
+    "dist"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/g-t-georgiev/color-picker.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "author": "Georgi Georgiev",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/g-t-georgiev/color-picker/issues"
   },
-  "homepage": "https://github.com/g-t-georgiev/color-picker#readme"
+  "homepage": "https://github.com/g-t-georgiev/color-picker#readme",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tslib": "^2.8.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  }
 }

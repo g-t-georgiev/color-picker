@@ -1,4 +1,5 @@
-import ColorUtils from "../utils/ColorUtils.js";
+import { ColorFormat, SupportedColorFormat, onMoveCallback } from "../types";
+import { ColorUtils, SUPPORTED_COLOR_FORMATS } from "../utils";
 
 const template = document.createElement("template");
 template.innerHTML = `
@@ -131,7 +132,11 @@ template.innerHTML = `
       color: #fff;
     }
 
-    .icon-btn svg { width: 16px; height: 16px; fill: currentColor; }
+    .icon-btn svg { display: block; width: 16px; height: 16px; fill: currentColor; }
+
+    .icon-btn-copy .icon-copied { display: none; }
+    .icon-btn-copy.copied .icon-copy { display: none; }
+    .icon-btn-copy.copied .icon-copied { display: block; }
 
     .color-display {
       font-size: 13px;
@@ -239,10 +244,11 @@ template.innerHTML = `
         </div>
       </div>
     </div>
-    <button class="icon-btn" id="copyBtn" title="Copy to clipboard">
-      <svg viewBox="0 0 24 24">
+    <button class="icon-btn icon-btn-copy" id="copyBtn" title="Copy to clipboard">
+      <svg viewBox="0 0 24 24" class="icon-copy">
         <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
       </svg>
+      <svg viewBox="0 0 24 24" class="icon-copied"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
     </button>
   </div>
 
@@ -261,220 +267,265 @@ template.innerHTML = `
   </div>
 `;
 
-class ColorPickerPanel extends HTMLElement {
+export default class ColorPickerPanel extends HTMLElement {
+  #shadowRoot: ShadowRoot;
+
+  #hsv: [number, number, number] = [0, 1, 1];
+  #alpha: number = 1;
+  #format: SupportedColorFormat = ColorFormat.HEX;
+  #formatOptionsList = SUPPORTED_COLOR_FORMATS;
+  #formatListExpanded: boolean = false;
+
+  #elemsMap: {
+    palette: HTMLElement;
+    paletteHandle: HTMLElement;
+    hueTrack: HTMLElement;
+    hueHandle: HTMLElement;
+    opacityTrack: HTMLElement;
+    opacityOverlay: HTMLElement;
+    opacityHandle: HTMLElement;
+    colorDisplay: HTMLElement;
+    formatWrapper: HTMLElement;
+    formatList: HTMLElement;
+    formatOptions: NodeListOf<HTMLElement>;
+    copyBtn: HTMLElement;
+    eyedropperBtn: HTMLElement;
+  };
+
+  #abortController!: AbortController;
+
   constructor() {
     super();
 
-    this.attachShadow({ mode: "open" });
-    this.shadowRoot.appendChild(template.content.cloneNode(true));
+    this.#shadowRoot = this.attachShadow({ mode: "open" });
+    this.#shadowRoot.appendChild(template.content.cloneNode(true));
 
-    // Initial State
-    this.hsv = [0, 1, 1];
-    this.alpha = 1;
-    this.format = "hex";
-
-    // Dropdown state
-    this.formatOptionsList = ["hex", "rgb", "hsl"];
-    this.formatListExpanded = false;
-
-    this.els = {
-      palette: this.shadowRoot.getElementById("palette"),
-      paletteHandle: this.shadowRoot.getElementById("paletteHandle"),
-      hueTrack: this.shadowRoot.getElementById("hueTrack"),
-      hueHandle: this.shadowRoot.getElementById("hueHandle"),
-      opacityTrack: this.shadowRoot.getElementById("opacityTrack"),
-      opacityOverlay: this.shadowRoot.getElementById("opacityOverlay"),
-      opacityHandle: this.shadowRoot.getElementById("opacityHandle"),
-      colorDisplay: this.shadowRoot.getElementById("colorDisplay"),
-      formatWrapper: this.shadowRoot.getElementById("formatWrapper"),
-      formatList: this.shadowRoot.getElementById("formatList"),
-      formatOptions: this.shadowRoot.querySelectorAll(".format-option"),
-      copyBtn: this.shadowRoot.getElementById("copyBtn"),
-      eyedropperBtn: this.shadowRoot.getElementById("eyedropperBtn")
+    this.#elemsMap = {
+      palette: this.#shadowRoot.getElementById("palette")!,
+      paletteHandle: this.#shadowRoot.getElementById("paletteHandle")!,
+      hueTrack: this.#shadowRoot.getElementById("hueTrack")!,
+      hueHandle: this.#shadowRoot.getElementById("hueHandle")!,
+      opacityTrack: this.#shadowRoot.getElementById("opacityTrack")!,
+      opacityOverlay: this.#shadowRoot.getElementById("opacityOverlay")!,
+      opacityHandle: this.#shadowRoot.getElementById("opacityHandle")!,
+      colorDisplay: this.#shadowRoot.getElementById("colorDisplay")!,
+      formatWrapper: this.#shadowRoot.getElementById("formatWrapper")!,
+      formatList: this.#shadowRoot.getElementById("formatList")!,
+      formatOptions: this.#shadowRoot.querySelectorAll<HTMLElement>(".format-option"),
+      copyBtn: this.#shadowRoot.getElementById("copyBtn")!,
+      eyedropperBtn: this.#shadowRoot.getElementById("eyedropperBtn")!
     };
   }
 
   connectedCallback() {
-    this.attachEvents();
-    if (!window.EyeDropper) {
-      console.warn("Eyedropper API not supported.");
-      this.els.eyedropperBtn.style.display = "none";
-    }
-    this.updateUI();
+    this.#abortController = new AbortController();
+    const { signal } = this.#abortController;
+
+    this.#checkEyedropperApiSupport();
+    this.#attachEventListeners(signal);
+    this.#updateUI();
   }
 
   disconnectedCallback() {
-    if (this._handleDocumentClick) {
-      document.removeEventListener("click", this._handleDocumentClick);
-    }
+    this.#abortController.abort();
   }
 
-  attachEvents() {
-    this.setupDrag(this.els.palette, (x, y) => {
-      this.hsv[1] = Math.max(0, Math.min(1, x));
-      this.hsv[2] = Math.max(0, Math.min(1, 1 - y));
-      this.updateUI();
-    });
+  #checkEyedropperApiSupport() {
+    if ("EyeDropper" in window) return;
 
-    this.setupDrag(this.els.hueTrack, (x) => {
-      this.hsv[0] = Math.max(0, Math.min(360, x * 360));
-      this.updateUI();
-    });
-
-    this.setupDrag(this.els.opacityTrack, (x) => {
-      this.alpha = Math.max(0, Math.min(1, x));
-      this.updateUI();
-    });
-
-    this.els.formatList.addEventListener("click", (ev) => {
-      const option = ev.target.closest('.format-option');
-
-      if (!this.formatListExpanded) {
-        // Expand the dropdown
-        this.formatListExpanded = true;
-        this.els.formatList.classList.add("expanded");
-
-        // Calculate vertical shift so the selected option stays exactly where the wrapper is
-        const index = this.formatOptionsList.indexOf(this.format);
-        this.els.formatList.style.top = `-${index * 22}px`;
-      } else {
-        // Option selected
-        if (option) {
-          this.setFormat(option.getAttribute("data-value"));
-        }
-        this.closeFormatList();
-      }
-    });
-
-    // Close dropdown when clicking outside (within the Shadow DOM)
-    this.shadowRoot.addEventListener("click", (ev) => {
-      if (this.formatListExpanded && !ev.composedPath().includes(this.els.formatList)) {
-        this.closeFormatList();
-      }
-    });
-
-    // Close dropdown when clicking outside (on the main Document)
-    this._handleDocumentClick = (ev) => {
-      if (this.formatListExpanded && !ev.composedPath().includes(this)) {
-        this.closeFormatList();
-      }
-    };
-    document.addEventListener("click", this._handleDocumentClick);
-
-    this.els.copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(this.els.colorDisplay.textContent);
-
-      // Visual feedback
-      const originalHTML = this.els.copyBtn.innerHTML;
-      this.els.copyBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
-      setTimeout(() => this.els.copyBtn.innerHTML = originalHTML, 1000);
-    });
-
-    this.els.eyedropperBtn.addEventListener("click", async () => {
-      if (!window.EyeDropper) return;
-      const dropper = new EyeDropper();
-      try {
-        const result = await dropper.open();
-        this.setColor(result.sRGBHex);
-      } catch (err) {
-        // User canceled selection
-      }
-    });
+    console.warn("EyeDropper API not supported.");
+    this.#elemsMap.eyedropperBtn.style.display = "none";
   }
 
-  setFormat(val) {
-    this.format = val;
+  #attachEventListeners(signal: AbortSignal) {
+    this.#setupDrag(this.#elemsMap.palette, (x: number, y: number) => {
+      this.#hsv[1] = Math.max(0, Math.min(1, x));
+      this.#hsv[2] = Math.max(0, Math.min(1, 1 - y));
+      this.#updateUI();
+    }, signal);
+    this.#setupDrag(this.#elemsMap.hueTrack, (x: number) => {
+      this.#hsv[0] = Math.max(0, Math.min(360, x * 360));
+      this.#updateUI();
+    }, signal);
+    this.#setupDrag(this.#elemsMap.opacityTrack, (x: number) => {
+      this.#alpha = Math.max(0, Math.min(1, x));
+      this.#updateUI();
+    }, signal);
+
+    this.#elemsMap.formatList.addEventListener("click", this.#handleFormatListClick, { signal });
+    this.#shadowRoot.addEventListener("click", this.#handleOutsideClick as EventListener, { signal });
+    document.addEventListener("click", this.#handleDocumentClick, { signal });
+    this.#elemsMap.copyBtn.addEventListener("click", this.#handleCopyBtnClick, { signal });
+    this.#elemsMap.eyedropperBtn.addEventListener("click", this.#handleEyedropperClick, { signal });
+  }
+
+  setFormat(value: SupportedColorFormat) {
+    this.#format = value;
     // Update selected HTML classes for styling
-    this.els.formatOptions.forEach(opt => {
-      if (opt.getAttribute("data-value") === val) {
+    this.#elemsMap.formatOptions.forEach(opt => {
+      if (opt.getAttribute("data-value") === value) {
         opt.classList.add("selected");
       } else {
         opt.classList.remove("selected");
       }
     });
-    this.updateUI();
+    this.#updateUI();
   }
 
-  closeFormatList() {
-    this.formatListExpanded = false;
-    this.els.formatList.classList.remove("expanded");
-    this.els.formatList.style.top = "0px";
+  #closeFormatList() {
+    this.#formatListExpanded = false;
+    this.#elemsMap.formatList.classList.remove("expanded");
+    this.#elemsMap.formatList.style.top = "0px";
   }
 
-  setupDrag(element, onMove) {
+  #setupDrag(element: HTMLElement, onMove: onMoveCallback, signal?: AbortSignal) {
     let isDragging = false;
-
-    const update = (e) => {
+    const update = (ev: PointerEvent) => {
       const rect = element.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
+      const x = (ev.clientX - rect.left) / rect.width;
+      const y = (ev.clientY - rect.top) / rect.height;
       onMove(x, y);
     };
-
-    element.addEventListener("pointerdown", (ev) => {
+    const onPointerDown = (ev: PointerEvent) => {
       isDragging = true;
       element.setPointerCapture(ev.pointerId);
       update(ev);
-    });
-
-    element.addEventListener("pointermove", (ev) => {
-      if (isDragging) update(ev);
-    });
-
-    element.addEventListener("pointerup", (ev) => {
+    }
+    const onPointerMove = (ev: PointerEvent) => {
+      if (!isDragging) return;
+      update(ev);
+    }
+    const onPointerUp = (ev: PointerEvent) => {
       isDragging = false;
       element.releasePointerCapture(ev.pointerId);
-      this.emitChange(); // Only emit public event on drop/release to prevent spamming
-    });
+      this.#emitChange();
+    }
+
+    element.addEventListener("pointerdown", onPointerDown, { signal });
+    element.addEventListener("pointermove", onPointerMove, { signal });
+    element.addEventListener("pointerup", onPointerUp, { signal });
   }
 
-  setColor(hex) {
+  setColor(hex: SupportedColorFormat) {
     const [r, g, b, a] = ColorUtils.hexToRgb(hex);
-    this.hsv = ColorUtils.rgbToHsv(r, g, b);
-    this.alpha = a;
-    this.updateUI();
-    this.emitChange();
+    this.#hsv = ColorUtils.rgbToHsv(r, g, b);
+    this.#alpha = a;
+    this.#updateUI();
+    this.#emitChange();
   }
 
-  updateUI() {
-    const [h, s, v] = this.hsv;
+  #updateUI() {
+    const [h, s, v] = this.#hsv;
     const [r, g, b] = ColorUtils.hsvToRgb(h, s, v);
     const rgbBase = ColorUtils.hsvToRgb(h, 1, 1); // Pure hue color
 
     // Output formatting
     let output = "";
-    if (this.format === "hex") {
-      output = ColorUtils.rgbToHex(r, g, b, this.alpha);
-    } else if (this.format === "rgb") {
-      output = this.alpha < 1 ? `rgba(${r}, ${g}, ${b}, ${this.alpha.toFixed(2)})` : `rgb(${r}, ${g}, ${b})`;
-    } else if (this.format === "hsl") {
+    if (this.#format === ColorFormat.HEX) {
+      output = ColorUtils.rgbToHex(r, g, b, this.#alpha);
+    } else if (this.#format === ColorFormat.RGB) {
+      output = this.#alpha < 1 ? `rgba(${r}, ${g}, ${b}, ${this.#alpha.toFixed(2)})` : `rgb(${r}, ${g}, ${b})`;
+    } else if (this.#format === ColorFormat.HSL) {
       const [hslH, hslS, hslL] = ColorUtils.rgbToHsl(r, g, b);
-      output = this.alpha < 1 ? `hsla(${hslH}, ${Math.round(hslS * 100)}%, ${Math.round(hslL * 100)}%, ${this.alpha.toFixed(2)})` : `hsl(${hslH}, ${Math.round(hslS * 100)}%, ${Math.round(hslL * 100)}%)`;
+      output = this.#alpha < 1 ? `hsla(${hslH}, ${Math.round(hslS * 100)}%, ${Math.round(hslL * 100)}%, ${this.#alpha.toFixed(2)})` : `hsl(${hslH}, ${Math.round(hslS * 100)}%, ${Math.round(hslL * 100)}%)`;
     }
 
     // Update elements
-    this.els.colorDisplay.textContent = output;
-    this.els.palette.style.backgroundColor = `rgb(${rgbBase[0]}, ${rgbBase[1]}, ${rgbBase[2]})`;
+    this.#elemsMap.colorDisplay.textContent = output;
+    this.#elemsMap.palette.style.backgroundColor = `rgb(${rgbBase[0]}, ${rgbBase[1]}, ${rgbBase[2]})`;
 
-    this.els.paletteHandle.style.left = `${s * 100}%`;
-    this.els.paletteHandle.style.top = `${(1 - v) * 100}%`;
+    this.#elemsMap.paletteHandle.style.left = `${s * 100}%`;
+    this.#elemsMap.paletteHandle.style.top = `${(1 - v) * 100}%`;
 
-    this.els.hueHandle.style.left = `${(h / 360) * 100}%`;
-    this.els.opacityHandle.style.left = `${this.alpha * 100}%`;
+    this.#elemsMap.hueHandle.style.left = `${(h / 360) * 100}%`;
+    this.#elemsMap.opacityHandle.style.left = `${this.#alpha * 100}%`;
 
-    this.els.opacityOverlay.style.background = `linear-gradient(to right, transparent, rgb(${r}, ${g}, ${b}))`;
+    this.#elemsMap.opacityOverlay.style.background = `linear-gradient(to right, transparent, rgb(${r}, ${g}, ${b}))`;
   }
 
-  emitChange() {
-    const [h, s, v] = this.hsv;
+  #emitChange() {
+    const [h, s, v] = this.#hsv;
     const [r, g, b] = ColorUtils.hsvToRgb(h, s, v);
-    const hex = ColorUtils.rgbToHex(r, g, b, this.alpha);
+    const hex = ColorUtils.rgbToHex(r, g, b, this.#alpha);
 
     this.dispatchEvent(new CustomEvent("color-changed", {
       bubbles: true,
       composed: true,
-      detail: { hex, r, g, b, alpha: this.alpha, displayString: this.els.colorDisplay.textContent }
+      detail: { hex, r, g, b, alpha: this.#alpha, displayString: this.#elemsMap.colorDisplay.textContent }
     }));
+  }
+
+  #handleFormatListClick = (ev: PointerEvent) => {
+    const target = ev.target! as HTMLElement;
+    const option = target.closest(".format-option")! as HTMLElement | null;
+
+    if (!this.#formatListExpanded) {
+      this.#handleFormatListExpand();
+    } else {
+      this.#handleFormatListCollapse(option);
+    }
+  }
+
+  #handleFormatListExpand() {
+    // Expand the dropdown
+    this.#formatListExpanded = true;
+    this.#elemsMap.formatList.classList.add("expanded");
+
+    // Calculate vertical shift so the selected option stays exactly where the wrapper is
+    const index = this.#formatOptionsList.indexOf(this.#format);
+    this.#elemsMap.formatList.style.top = `-${index * 22}px`;
+  }
+
+  #handleFormatListCollapse(option: HTMLElement | null) {
+    // Option selected
+    if (option) {
+      const value = option.getAttribute("data-value") as SupportedColorFormat;
+      this.setFormat(value);
+    }
+    this.#closeFormatList();
+  }
+
+  /** Close dropdown when clicking outside (on Document) */
+  #handleDocumentClick = (ev: PointerEvent) => {
+    if (!this.#formatListExpanded || ev.composedPath().includes(this)) return;
+
+    this.#closeFormatList();
+  };
+
+  /** Close dropdown when clicking outside (on ColorPickerPanel) */
+  #handleOutsideClick = (ev: PointerEvent) => {
+    if (this.#formatListExpanded && !ev.composedPath().includes(this.#elemsMap.formatList)) {
+      this.#closeFormatList();
+    }
+  }
+
+  #handleCopyBtnClick = () => {
+    navigator.clipboard.writeText(this.#elemsMap.colorDisplay.textContent ?? "");
+
+    this.#elemsMap.copyBtn.classList.add("copied");
+
+    setTimeout(() => {
+      const { signal } = this.#abortController;
+
+      if (signal.aborted) return;
+
+      this.#elemsMap.copyBtn.classList.remove("copied");
+    }, 1000);
+  }
+
+  #handleEyedropperClick = async () => {
+    if (!window.EyeDropper) return;
+
+    const dropper = new EyeDropper();
+
+    try {
+      const result = await dropper.open();
+      const value = result.sRGBHex as ColorFormat.HEX;
+
+      this.setColor(value);
+    } catch (err) {
+      // User canceled selection
+    }
   }
 }
 

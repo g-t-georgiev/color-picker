@@ -32,3 +32,6 @@ build/
 # Environment variables (if used)
 .env
 .env.local
+
+# Compressed files and archives
+**/*.zip
