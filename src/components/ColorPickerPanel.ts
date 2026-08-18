@@ -411,11 +411,17 @@ export default class ColorPickerPanel extends HTMLElement {
     element.addEventListener("pointerup", onPointerUp, { signal });
   }
 
-  setColor(hex: SupportedColorFormat) {
-    const [r, g, b, a] = ColorUtils.hexToRgb(hex);
-    this.#hsv = ColorUtils.rgbToHsv(r, g, b);
-    this.#alpha = a;
-    this.#updateUI();
+  setColor(value: string) {
+    const parsedColor = ColorUtils.parseColor(value);
+
+    if (!parsedColor) return;
+
+    const { hsv, alpha, format } = parsedColor;
+
+    this.#hsv = hsv;
+    this.#alpha = alpha;
+
+    this.setFormat(format);
   }
 
   #updateUI() {

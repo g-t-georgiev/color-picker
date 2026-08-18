@@ -6,6 +6,11 @@ export enum ColorFormat {
   HSL = "hsl",
   HSLA = "hsla"
 }
+export interface ParsedColor {
+  hsv: [number, number, number]; // [0-360, 0-1, 0-1]
+  alpha: number;                 // 0-1
+  format: SupportedColorFormat;
+}
 
 export type SupportedColorFormat = ColorFormat.HEX | ColorFormat.RGB | ColorFormat.HSL;
 

@@ -1,4 +1,3 @@
-import type { ColorFormat } from "../types";
 import ColorPickerPanel from "./ColorPickerPanel";
 import { ColorUtils } from "../utils";
 
@@ -174,19 +173,19 @@ export default class ColorPickerButton extends HTMLElement {
   }
 
   #handleColorValueAttrChanges(oldColorValue: string | null, newColorValue: string | null) {
-    if (!ColorUtils.isValidColorString(newColorValue)) {
+    const parsedNewColor = ColorUtils.parseColor(newColorValue);
+
+    if (!parsedNewColor) {
       console.warn(`"${newColorValue}" is not valid/supported color format.`);
 
-      const fallbackColor = ColorUtils.isValidColorString(oldColorValue) ? oldColorValue : FALLBACK_COLOR;
-      this.setAttribute("value", fallbackColor);
+      const fallbackColor = ColorUtils.parseColor(oldColorValue) ? oldColorValue : FALLBACK_COLOR;
+      this.setAttribute("value", fallbackColor!);
 
       return;
     }
 
-    const color = newColorValue as ColorFormat.HEX;
-
-    this.#panel.setColor(color);
-    this.#triggerColor.style.background = color;
+    this.#panel.setColor(newColorValue!);
+    this.#triggerColor.style.background = newColorValue!;
   }
 }
 
