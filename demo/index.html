@@ -29,6 +29,12 @@
   <color-picker-button value="#007acc"></color-picker-button>
 
   <script type="module" src="../src/index.ts"></script>
+  <script>
+    const colorPickerBtn = document.querySelector("color-picker-button");
+    colorPickerBtn?.addEventListener("color-changed", (ev) => {
+      console.log(`Color changed to ${JSON.stringify(ev.detail)}`);
+    });
+  </script>
 </body>
 
 </html>

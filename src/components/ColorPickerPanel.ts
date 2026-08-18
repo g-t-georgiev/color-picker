@@ -416,7 +416,6 @@ export default class ColorPickerPanel extends HTMLElement {
     this.#hsv = ColorUtils.rgbToHsv(r, g, b);
     this.#alpha = a;
     this.#updateUI();
-    this.#emitChange();
   }
 
   #updateUI() {
@@ -528,6 +527,7 @@ export default class ColorPickerPanel extends HTMLElement {
       const value = result.sRGBHex as ColorFormat.HEX;
 
       this.setColor(value);
+      this.#emitChange();
     } catch (err) {
       // User canceled selection
     }
